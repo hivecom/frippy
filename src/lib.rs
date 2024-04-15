@@ -34,8 +34,20 @@ extern crate diesel;
 
 pub mod error;
 pub mod plugin;
-pub mod plugins;
 pub mod utils;
+
+pub mod plugins {
+    pub mod counter;
+    pub mod factoid;
+    pub mod help;
+    pub mod keepnick;
+    pub mod quote;
+    pub mod remind;
+    pub mod sed;
+    pub mod tell;
+    pub mod unicode;
+    pub mod url;
+}
 
 use crate::plugin::*;
 

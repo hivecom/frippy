@@ -27,7 +27,7 @@ irc             = "0.13.6"
 log             = "0.4.6"
 time            = "0.1.42"
 humantime       = "1.2.0"
-rlua            = "0.19.7"
+mlua = { version = "0.9.7", features = ["lua54"] }
 reqwest         = "0.9.18"
 regex           = "1.1.8"
 lazy_static     = "1.3.0"

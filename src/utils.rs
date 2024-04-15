@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::io::{self, Read};
 use std::time::Duration;
 
-use reqwest::header::{HeaderValue, ACCEPT_LANGUAGE, CONNECTION};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, CONNECTION};
 use reqwest::{Client, ClientBuilder};
 
 use self::error::{DownloadError, ErrorKind};
@@ -11,6 +11,7 @@ use failure::ResultExt;
 #[derive(Clone, Debug)]
 pub struct Url<'a> {
     url: Cow<'a, str>,
+    headers: Option<HeaderMap>,
     max_kib: Option<usize>,
     timeout: Option<Duration>,
 }
@@ -19,6 +20,7 @@ impl<'a> From<String> for Url<'a> {
     fn from(url: String) -> Self {
         Url {
             url: Cow::from(url),
+            headers: None,
             max_kib: None,
             timeout: None,
         }
@@ -29,6 +31,7 @@ impl<'a> From<&'a str> for Url<'a> {
     fn from(url: &'a str) -> Self {
         Url {
             url: Cow::from(url),
+            headers: None,
             max_kib: None,
             timeout: None,
         }
@@ -46,6 +49,11 @@ impl<'a> Url<'a> {
         self
     }
 
+    pub fn headers(mut self, headers: HeaderMap) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
     /// Downloads the file and converts it to a String.
     /// Any invalid bytes are converted to a replacement character.
     ///
@@ -58,8 +66,13 @@ impl<'a> Url<'a> {
             Client::new()
         };
 
-        let mut response = client
-            .get(self.url.as_ref())
+        let mut request = client.get(self.url.as_ref());
+
+        if let Some(headers) = self.headers.clone() {
+            request = request.headers(headers)
+        }
+
+        let mut response = request
             .header(CONNECTION, HeaderValue::from_static("close"))
             .header(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.5"))
             .send()

@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use antidote::RwLock;
 use irc::client::prelude::*;
-use rlua::prelude::*;
-use rlua::HookTriggers;
+use mlua::prelude::*;
+use mlua::HookTriggers;
 
 use chrono::NaiveDateTime;
 use time;
@@ -221,7 +221,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
 
         let lua = Lua::new();
         // TODO Is this actually 1 Mib?
-        lua.set_memory_limit(Some(1024 * 1024));
+        lua.set_memory_limit(1024 * 1024)?;
 
         let start = Instant::now();
         // Check if the factoid timed out
@@ -244,29 +244,21 @@ impl<T: Database, C: Client> Factoid<T, C> {
             },
         );
 
-        let output = lua.context(|ctx| {
-            let globals = ctx.globals();
+        let globals = lua.globals();
 
-            globals.set("factoid", code)?;
-            globals.set(
-                "download",
-                ctx.create_function(|ctx, url| download(&ctx, url))?,
-            )?;
-            globals.set(
-                "json_decode",
-                ctx.create_function(|ctx, json| json_decode(&ctx, json))?,
-            )?;
-            globals.set("sleep", ctx.create_function(|ctx, ms| sleep(&ctx, ms))?)?;
-            globals.set("args", args)?;
-            globals.set("input", command.tokens.join(" "))?;
-            globals.set("user", command.source.clone())?;
-            globals.set("channel", command.target.clone())?;
-            globals.set("output", ctx.create_table()?)?;
+        globals.set("factoid", code)?;
+        globals.set("download", lua.create_function(download)?)?;
+        globals.set("json_decode", lua.create_function(json_decode)?)?;
+        globals.set("sleep", lua.create_function(sleep)?)?;
+        globals.set("args", args)?;
+        globals.set("input", command.tokens.join(" "))?;
+        globals.set("user", command.source.clone())?;
+        globals.set("channel", command.target.clone())?;
+        globals.set("output", lua.create_table()?)?;
 
-            ctx.load(LUA_SANDBOX).set_name(name)?.exec()?;
+        lua.load(LUA_SANDBOX).set_name(name).exec()?;
 
-            globals.get::<_, Vec<String>>("output")
-        })?;
+        let output = globals.get::<_, Vec<String>>("output")?;
 
         Ok(output.join("|"))
     }
