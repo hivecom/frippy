@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use antidote::RwLock;
 use irc::client::data::User;
 use irc::client::prelude::*;
 
@@ -11,6 +10,7 @@ use std::time::Duration;
 use time;
 
 use crate::plugin::*;
+use crate::ConnectionPool;
 use crate::FrippyClient;
 
 use self::error::*;
@@ -26,15 +26,15 @@ pub mod database;
 use self::database::Database;
 
 #[derive(PluginName)]
-pub struct Tell<T: Database, C> {
-    tells: RwLock<T>,
+pub struct Tell<C> {
+    db: ConnectionPool,
     phantom: PhantomData<C>,
 }
 
-impl<T: Database, C: FrippyClient> Tell<T, C> {
-    pub fn new(db: T) -> Self {
+impl<C: FrippyClient> Tell<C> {
+    pub fn new(db: ConnectionPool) -> Self {
         Tell {
-            tells: RwLock::new(db),
+            db,
             phantom: PhantomData,
         }
     }
@@ -96,7 +96,7 @@ impl<T: Database, C: FrippyClient> Tell<T, C> {
             };
 
             debug!("Saving tell for {:?}", receiver);
-            self.tells.write().insert_tell(&tell)?;
+            self.db.insert_tell(&tell)?;
             no_receiver = false;
         }
 
@@ -110,11 +110,7 @@ impl<T: Database, C: FrippyClient> Tell<T, C> {
     }
 
     fn on_namelist(&self, client: &C, channel: &str) -> Result<(), FrippyError> {
-        let receivers = self
-            .tells
-            .read()
-            .get_receivers()
-            .context(FrippyErrorKind::Tell)?;
+        let receivers = self.db.get_receivers().context(FrippyErrorKind::Tell)?;
 
         if let Some(users) = client.list_users(channel) {
             debug!("Outstanding tells for {:?}", receivers);
@@ -138,9 +134,7 @@ impl<T: Database, C: FrippyClient> Tell<T, C> {
             return Ok(());
         }
 
-        let mut tells = self.tells.write();
-
-        let tell_messages = match tells.get_tells(&receiver.to_lowercase()) {
+        let tell_messages = match self.db.get_tells(&receiver.to_lowercase()) {
             Ok(t) => t,
             Err(e) => {
                 // This warning only occurs if frippy is built without a database
@@ -172,7 +166,7 @@ impl<T: Database, C: FrippyClient> Tell<T, C> {
             );
         }
 
-        tells
+        self.db
             .delete_tells(&receiver.to_lowercase())
             .context(FrippyErrorKind::Tell)?;
 
@@ -191,7 +185,7 @@ impl<T: Database, C: FrippyClient> Tell<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> Plugin for Tell<T, C> {
+impl<C: FrippyClient> Plugin for Tell<C> {
     type Client = C;
     fn execute(&self, client: &Self::Client, message: &Message) -> ExecutionStatus {
         let source = message.source_nickname();
@@ -256,7 +250,7 @@ impl<T: Database, C: FrippyClient> Plugin for Tell<T, C> {
 }
 
 use std::fmt;
-impl<T: Database, C: FrippyClient> fmt::Debug for Tell<T, C> {
+impl<C: FrippyClient> fmt::Debug for Tell<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Tell {{ ... }}")
     }
@@ -274,12 +268,10 @@ pub mod error {
         NotFound,
 
         /// MySQL error
-        #[cfg(feature = "mysql")]
         #[fail(display = "Failed to execute MySQL Query")]
         MysqlError,
 
         /// No connection error
-        #[cfg(feature = "mysql")]
         #[fail(display = "No connection to the database")]
         NoConnection,
     }

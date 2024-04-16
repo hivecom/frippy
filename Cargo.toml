@@ -14,14 +14,6 @@ edition = "2018"
 name = "frippy"
 doc = false
 
-[features]
-mysql = [
-  "diesel",
-  "diesel_migrations",
-  "r2d2",
-  "r2d2-diesel"
-]
-
 [dependencies]
 irc             = "0.13.6"
 log             = "0.4.6"
@@ -50,19 +42,12 @@ git = 'https://github.com/Jokler/unicode_names'
 branch = 'update-to-latest-unicode'
 
 [dependencies.diesel]
-version = "1.4.2"
-optional = true
-features = ["mysql", "chrono"]
+version = "2.1.5"
+features = ["mysql", "chrono", "r2d2"]
 
 [dependencies.diesel_migrations]
-version = "1.4.0"
-optional = true
+version = "2.1.0"
 features = ["mysql"]
 
 [dependencies.r2d2]
-version = "0.8.5"
-optional = true
-
-[dependencies.r2d2-diesel]
-version = "1.0.0"
-optional = true
+version = "0.8.10"

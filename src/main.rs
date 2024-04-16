@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-#[cfg(feature = "mysql")]
-use std::sync::Arc;
-
+use diesel::{r2d2::ConnectionManager, MysqlConnection};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use glob::glob;
 use irc::client::reactor::IrcReactor;
 
@@ -16,16 +14,11 @@ use frippy::plugins::tell::Tell;
 use frippy::plugins::unicode::Unicode;
 use frippy::plugins::url::UrlTitles;
 
-use failure::{bail, Error};
+use failure::{bail, format_err, Error};
 use frippy::Config;
 use log::{error, info};
 
-#[cfg(feature = "mysql")]
-#[macro_use]
-extern crate diesel_migrations;
-
-#[cfg(feature = "mysql")]
-embed_migrations!();
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 fn main() {
     if let Err(e) = log4rs::init_file("log.yml", Default::default()) {
@@ -73,17 +66,22 @@ fn run() -> Result<(), Error> {
 
     // Open a connection and add work for each config
     for config in configs {
-        let mut prefix = None;
         let mut disabled_plugins = None;
-        let mut mysql_url = None;
-        if let Some(ref options) = config.options {
+        let (mysql_url, prefix) = if let Some(ref options) = config.options {
             if let Some(disabled) = options.get("disabled_plugins") {
                 disabled_plugins = Some(disabled.split(',').map(|p| p.trim()).collect::<Vec<_>>());
             }
-            prefix = options.get("prefix");
+            let prefix = options.get("prefix");
 
-            mysql_url = options.get("mysql_url");
-        }
+            let url = options
+                .get("mysql_url")
+                .ok_or(format_err!("Must set mysql_url"))?;
+
+            (url, prefix)
+        } else {
+            bail!("Must set mysql_url option");
+        };
+
         let prefix = prefix.cloned().unwrap_or_else(|| String::from("."));
 
         let mut bot = frippy::Bot::new(&prefix);
@@ -93,53 +91,24 @@ fn run() -> Result<(), Error> {
         bot.add_plugin(Unicode::new());
         bot.add_plugin(KeepNick::new());
 
-        #[cfg(feature = "mysql")]
         {
-            if let Some(url) = mysql_url {
-                use diesel::MysqlConnection;
-                use r2d2_diesel::ConnectionManager;
+            let manager = ConnectionManager::<MysqlConnection>::new(mysql_url);
+            match r2d2::Pool::builder().build(manager) {
+                Ok(pool) => {
+                    if let Err(e) = pool.get()?.run_pending_migrations(MIGRATIONS) {
+                        bail!("Failed to run migrations: {}", e);
+                    }
 
-                let manager = ConnectionManager::<MysqlConnection>::new(url.clone());
-                match r2d2::Pool::builder().build(manager) {
-                    Ok(pool) => match embedded_migrations::run(&*pool.get()?) {
-                        Ok(_) => {
-                            let pool = Arc::new(pool);
-                            bot.add_plugin(Factoid::new(pool.clone()));
-                            bot.add_plugin(Quote::new(pool.clone()));
-                            bot.add_plugin(Tell::new(pool.clone()));
-                            bot.add_plugin(Remind::new(pool.clone()));
-                            bot.add_plugin(Counter::new(pool.clone()));
-                            info!("Connected to MySQL server")
-                        }
-                        Err(e) => {
-                            bot.add_plugin(Factoid::new(HashMap::new()));
-                            bot.add_plugin(Quote::new(HashMap::new()));
-                            bot.add_plugin(Tell::new(HashMap::new()));
-                            bot.add_plugin(Remind::new(HashMap::new()));
-                            bot.add_plugin(Counter::new(HashMap::new()));
-                            error!("Failed to run migrations: {}", e);
-                        }
-                    },
-                    Err(e) => error!("Failed to connect to database: {}", e),
+                    bot.add_plugin(Factoid::new(pool.clone()));
+                    bot.add_plugin(Quote::new(pool.clone()));
+                    bot.add_plugin(Tell::new(pool.clone()));
+                    bot.add_plugin(Remind::new(pool.clone()));
+                    bot.add_plugin(Counter::new(pool.clone()));
+
+                    info!("Connected to MySQL server")
                 }
-            } else {
-                bot.add_plugin(Factoid::new(HashMap::new()));
-                bot.add_plugin(Quote::new(HashMap::new()));
-                bot.add_plugin(Tell::new(HashMap::new()));
-                bot.add_plugin(Remind::new(HashMap::new()));
-                bot.add_plugin(Counter::new(HashMap::new()));
+                Err(e) => bail!("Failed to connect to database: {}", e),
             }
-        }
-        #[cfg(not(feature = "mysql"))]
-        {
-            if mysql_url.is_some() {
-                error!("frippy was not built with the mysql feature")
-            }
-            bot.add_plugin(Factoid::new(HashMap::new()));
-            bot.add_plugin(Quote::new(HashMap::new()));
-            bot.add_plugin(Tell::new(HashMap::new()));
-            bot.add_plugin(Remind::new(HashMap::new()));
-            bot.add_plugin(Counter::new(HashMap::new()));
         }
 
         if let Some(disabled_plugins) = disabled_plugins {

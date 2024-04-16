@@ -1,5 +1,5 @@
 //! Provides the plugin derive macro
-#![recursion_limit="128"]
+#![recursion_limit = "128"]
 
 extern crate proc_macro;
 extern crate syn;
@@ -52,7 +52,7 @@ fn expand_error(ast: &syn::DeriveInput) -> quote::Tokens {
                 }
             }
         }
-    };
+    }
 
     let struct_name = if let Some(name) = name {
         syn::Ident::from(name)

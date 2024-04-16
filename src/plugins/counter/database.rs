@@ -1,47 +1,18 @@
-use std::collections::HashMap;
-#[cfg(feature = "mysql")]
-use std::sync::Arc;
-
-#[cfg(feature = "mysql")]
-use diesel::mysql::MysqlConnection;
-#[cfg(feature = "mysql")]
 use diesel::prelude::*;
-#[cfg(feature = "mysql")]
 use failure::ResultExt;
-#[cfg(feature = "mysql")]
-use r2d2::Pool;
-#[cfg(feature = "mysql")]
-use r2d2_diesel::ConnectionManager;
+
+use crate::ConnectionPool;
 
 use super::error::*;
 
 pub trait Database: Send + Sync {
-    fn add(&mut self, name: &str) -> Result<i64, CounterError>;
-    fn subtract(&mut self, name: &str) -> Result<i64, CounterError>;
+    fn add(&self, name: &str) -> Result<i64, CounterError>;
+    fn subtract(&self, name: &str) -> Result<i64, CounterError>;
     fn get_count(&self, name: &str) -> Result<i64, CounterError>;
-}
-
-impl<S: ::std::hash::BuildHasher + Send + Sync> Database for HashMap<String, i64, S> {
-    fn add(&mut self, name: &str) -> Result<i64, CounterError> {
-        Ok(*self
-            .entry(name.to_owned())
-            .and_modify(|count| *count += 1)
-            .or_insert(1))
-    }
-    fn subtract(&mut self, name: &str) -> Result<i64, CounterError> {
-        Ok(*self
-            .entry(name.to_owned())
-            .and_modify(|count| *count -= 1)
-            .or_insert(-1))
-    }
-    fn get_count(&self, name: &str) -> Result<i64, CounterError> {
-        Ok(self.get(name).copied().unwrap_or(0))
-    }
 }
 
 // Diesel automatically defines the counts module as public.
 // We create a schema module to keep it private.
-#[cfg(feature = "mysql")]
 mod schema {
     diesel::table! {
         counts (name) {
@@ -51,23 +22,21 @@ mod schema {
     }
 }
 
-#[cfg(feature = "mysql")]
 use self::schema::counts;
 
-#[cfg(feature = "mysql")]
-impl Database for Arc<Pool<ConnectionManager<MysqlConnection>>> {
-    fn add(&mut self, name: &str) -> Result<i64, CounterError> {
-        let conn = &*self.get().context(ErrorKind::NoConnection)?;
+impl Database for ConnectionPool {
+    fn add(&self, name: &str) -> Result<i64, CounterError> {
+        let mut conn = self.get().context(ErrorKind::NoConnection)?;
         match counts::table
             .find(name)
             .select(counts::columns::count)
-            .first(conn)
+            .first(&mut conn)
         {
             Ok(mut count) => {
                 count += 1;
                 diesel::update(counts::table.filter(counts::columns::name.eq(name)))
                     .set(counts::columns::count.eq(count))
-                    .execute(conn)
+                    .execute(&mut conn)
                     .context(ErrorKind::MysqlError)?;
 
                 Ok(count)
@@ -76,7 +45,7 @@ impl Database for Arc<Pool<ConnectionManager<MysqlConnection>>> {
                 diesel::result::Error::NotFound => {
                     diesel::insert_into(counts::table)
                         .values((counts::columns::name.eq(name), counts::columns::count.eq(1)))
-                        .execute(conn)
+                        .execute(&mut conn)
                         .context(ErrorKind::MysqlError)?;
 
                     Ok(1)
@@ -85,18 +54,19 @@ impl Database for Arc<Pool<ConnectionManager<MysqlConnection>>> {
             },
         }
     }
-    fn subtract(&mut self, name: &str) -> Result<i64, CounterError> {
-        let conn = &*self.get().context(ErrorKind::NoConnection)?;
+
+    fn subtract(&self, name: &str) -> Result<i64, CounterError> {
+        let mut conn = self.get().context(ErrorKind::NoConnection)?;
         match counts::table
             .find(name)
             .select(counts::columns::count)
-            .first(conn)
+            .first(&mut conn)
         {
             Ok(mut count) => {
                 count -= 1;
                 diesel::update(counts::table.filter(counts::columns::name.eq(name)))
                     .set(counts::columns::count.eq(count))
-                    .execute(conn)
+                    .execute(&mut conn)
                     .context(ErrorKind::MysqlError)?;
 
                 Ok(count)
@@ -108,7 +78,7 @@ impl Database for Arc<Pool<ConnectionManager<MysqlConnection>>> {
                             counts::columns::name.eq(name),
                             counts::columns::count.eq(-1),
                         ))
-                        .execute(conn)
+                        .execute(&mut conn)
                         .context(ErrorKind::MysqlError)?;
 
                     Ok(-1)
@@ -119,12 +89,12 @@ impl Database for Arc<Pool<ConnectionManager<MysqlConnection>>> {
     }
 
     fn get_count(&self, name: &str) -> Result<i64, CounterError> {
-        let conn = &*self.get().context(ErrorKind::NoConnection)?;
+        let mut conn = self.get().context(ErrorKind::NoConnection)?;
 
         match counts::table
             .find(name)
             .select(counts::columns::count)
-            .first(conn)
+            .first(&mut conn)
         {
             Ok(count) => Ok(count),
             Err(e) => match e {

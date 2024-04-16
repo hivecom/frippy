@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use antidote::RwLock;
 use irc::client::prelude::*;
 use mlua::prelude::*;
 use mlua::HookTriggers;
@@ -13,12 +12,14 @@ use mlua::HookTriggers;
 use chrono::NaiveDateTime;
 use time;
 
-use crate::plugin::*;
 use crate::FrippyClient;
+use crate::{plugin::*, ConnectionPool};
 pub mod database;
-use self::database::Database;
 
 mod utils;
+use self::database::{
+    count_factoids, delete_factoid, get_factoid, get_lua_value, insert_factoid, set_lua_value,
+};
 use self::utils::*;
 use crate::utils::Url;
 
@@ -32,15 +33,15 @@ use frippy_derive::PluginName;
 static LUA_SANDBOX: &str = include_str!("sandbox.lua");
 
 #[derive(PluginName)]
-pub struct Factoid<T: Database, C: Client> {
-    factoids: RwLock<T>,
+pub struct Factoid<C: Client> {
+    db: ConnectionPool,
     phantom: PhantomData<C>,
 }
 
-impl<T: Database, C: Client> Factoid<T, C> {
-    pub fn new(db: T) -> Self {
+impl<C: Client> Factoid<C> {
+    pub fn new(db: ConnectionPool) -> Self {
         Factoid {
-            factoids: RwLock::new(db),
+            db,
             phantom: PhantomData,
         }
     }
@@ -51,7 +52,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
         content: &str,
         author: &str,
     ) -> Result<&str, FactoidError> {
-        let count = self.factoids.read().count_factoids(name)?;
+        let count = count_factoids(&self.db, name)?;
         let tm = time::now().to_timespec();
 
         let factoid = database::NewFactoid {
@@ -63,10 +64,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
                 .expect("fails after death of universe"),
         };
 
-        self.factoids
-            .write()
-            .insert_factoid(&factoid)
-            .map(|()| "Successfully added!")
+        insert_factoid(&self.db, &factoid).map(|()| "Successfully added!")
     }
 
     fn add(&self, command: &mut PluginCommand) -> Result<&str, FactoidError> {
@@ -101,9 +99,9 @@ impl<T: Database, C: Client> Factoid<T, C> {
         }
 
         let name = command.tokens.remove(0);
-        let count = self.factoids.read().count_factoids(&name)?;
+        let count = count_factoids(&self.db, &name)?;
 
-        match self.factoids.write().delete_factoid(&name, count - 1) {
+        match delete_factoid(&self.db, &name, count - 1) {
             Ok(()) => Ok("Successfully removed"),
             Err(e) => Err(e)?,
         }
@@ -114,7 +112,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
             0 => Err(ErrorKind::InvalidCommand)?,
             1 => {
                 let name = &command.tokens[0];
-                let count = self.factoids.read().count_factoids(name)?;
+                let count = count_factoids(&self.db, name)?;
 
                 if count < 1 {
                     Err(ErrorKind::NotFound)?;
@@ -133,11 +131,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
             }
         };
 
-        let factoid = self
-            .factoids
-            .read()
-            .get_factoid(name, idx)
-            .context(ErrorKind::NotFound)?;
+        let factoid = get_factoid(&self.db, name, idx).context(ErrorKind::NotFound)?;
 
         let mut message = factoid.content.replace('\n', "|").replace('\r', "");
         message.truncate(512);
@@ -150,7 +144,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
             0 => Err(ErrorKind::InvalidCommand)?,
             1 => {
                 let name = &command.tokens[0];
-                let count = self.factoids.read().count_factoids(name)?;
+                let count = count_factoids(&self.db, name)?;
 
                 Ok(match count {
                     0 => Err(ErrorKind::NotFound)?,
@@ -161,7 +155,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
             _ => {
                 let name = &command.tokens[0];
                 let idx = i32::from_str(&command.tokens[1]).context(ErrorKind::InvalidIndex)?;
-                let factoid = self.factoids.read().get_factoid(name, idx)?;
+                let factoid = get_factoid(&self.db, name, idx)?;
 
                 Ok(format!(
                     "{}: Added by {} at {} UTC",
@@ -176,8 +170,8 @@ impl<T: Database, C: Client> Factoid<T, C> {
             Err(ErrorKind::InvalidIndex)?
         } else {
             let name = command.tokens.remove(0);
-            let count = self.factoids.read().count_factoids(&name)?;
-            let factoid = self.factoids.read().get_factoid(&name, count - 1)?;
+            let count = count_factoids(&self.db, &name)?;
+            let factoid = get_factoid(&self.db, &name, count - 1)?;
 
             let content = factoid.content;
             let mut message = if let Some(stripped) = content.strip_prefix('>') {
@@ -247,8 +241,27 @@ impl<T: Database, C: Client> Factoid<T, C> {
         let globals = lua.globals();
 
         globals.set("factoid", code)?;
-        globals.set("download", lua.create_function(download)?)?;
+        globals.set(
+            "download",
+            lua.create_function(|_, (url, headers)| download(url, headers))?,
+        )?;
+        let db = self.db.clone();
+        globals.set(
+            "persist",
+            lua.create_function(move |_, (key, value)| {
+                set_lua_value(&db.clone(), key, value)
+                    .map_err(|e| LuaError::external(e.to_string()))
+            })?,
+        )?;
+        let db = self.db.clone();
+        globals.set(
+            "retrieve",
+            lua.create_function(move |_, key| {
+                get_lua_value(&db.clone(), key).map_err(|e| LuaError::external(e.to_string()))
+            })?,
+        )?;
         globals.set("json_decode", lua.create_function(json_decode)?)?;
+        globals.set("json_encode", lua.create_function(json_encode)?)?;
         globals.set("sleep", lua.create_function(sleep)?)?;
         globals.set("args", args)?;
         globals.set("input", command.tokens.join(" "))?;
@@ -269,7 +282,7 @@ impl<T: Database, C: Client> Factoid<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> Plugin for Factoid<T, C> {
+impl<C: FrippyClient> Plugin for Factoid<C> {
     type Client = C;
     fn execute(&self, _: &Self::Client, message: &Message) -> ExecutionStatus {
         match message.command {
@@ -362,7 +375,7 @@ impl<T: Database, C: FrippyClient> Plugin for Factoid<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> fmt::Debug for Factoid<T, C> {
+impl<C: FrippyClient> fmt::Debug for Factoid<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Factoid {{ ... }}")
     }
@@ -396,12 +409,10 @@ pub mod error {
         NotFound,
 
         /// MySQL error
-        #[cfg(feature = "mysql")]
         #[fail(display = "Failed to execute MySQL Query")]
         MysqlError,
 
         /// No connection error
-        #[cfg(feature = "mysql")]
         #[fail(display = "No connection to the database")]
         NoConnection,
     }

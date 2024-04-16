@@ -20,10 +20,7 @@ pub fn sleep(_: &Lua, dur: u64) -> Result<(), LuaError> {
     Ok(())
 }
 
-pub fn download(
-    _: &Lua,
-    (url, headers): (String, Option<HashMap<String, String>>),
-) -> Result<String, LuaError> {
+pub fn download(url: String, headers: Option<HashMap<String, String>>) -> Result<String, LuaError> {
     let mut url = Url::from(url).max_kib(1024);
 
     if let Some(headers) = headers {
@@ -55,7 +52,11 @@ pub fn download(
     }
 }
 
-fn convert_value(lua: &Lua, sval: SerdeValue, max_recurs: usize) -> Result<LuaValue, LuaError> {
+fn convert_serde_value(
+    lua: &Lua,
+    sval: SerdeValue,
+    max_recurs: usize,
+) -> Result<LuaValue, LuaError> {
     if max_recurs == 0 {
         return Err(RuntimeError(String::from(
             "Reached max recursion level - json is nested too deep",
@@ -67,15 +68,24 @@ fn convert_value(lua: &Lua, sval: SerdeValue, max_recurs: usize) -> Result<LuaVa
         SerdeValue::Bool(b) => LuaValue::Boolean(b),
         SerdeValue::String(s) => LuaValue::String(lua.create_string(&s)?),
         SerdeValue::Number(n) => {
-            let f = n.as_f64().ok_or_else(|| {
-                RuntimeError(String::from("Failed to convert number into double"))
-            })?;
-            LuaValue::Number(f)
+            if n.is_f64() {
+                let f = n.as_f64().ok_or_else(|| {
+                    RuntimeError(String::from("Failed to convert number into double"))
+                })?;
+
+                LuaValue::Number(f)
+            } else {
+                let i = n.as_i64().ok_or_else(|| {
+                    RuntimeError(String::from("Failed to convert number into integer"))
+                })?;
+
+                LuaValue::Integer(i)
+            }
         }
         SerdeValue::Array(arr) => {
             let table = lua.create_table()?;
             for (i, val) in arr.into_iter().enumerate() {
-                table.set(i + 1, convert_value(lua, val, max_recurs - 1)?)?;
+                table.set(i + 1, convert_serde_value(lua, val, max_recurs - 1)?)?;
             }
 
             LuaValue::Table(table)
@@ -83,7 +93,7 @@ fn convert_value(lua: &Lua, sval: SerdeValue, max_recurs: usize) -> Result<LuaVa
         SerdeValue::Object(obj) => {
             let table = lua.create_table()?;
             for (key, val) in obj {
-                table.set(key, convert_value(lua, val, max_recurs - 1)?)?;
+                table.set(key, convert_serde_value(lua, val, max_recurs - 1)?)?;
             }
 
             LuaValue::Table(table)
@@ -97,5 +107,46 @@ pub fn json_decode(lua: &Lua, json: String) -> Result<LuaValue, LuaError> {
     let ser_val: SerdeValue =
         serde_json::from_str(&json).map_err(|e| RuntimeError(e.to_string()))?;
 
-    convert_value(lua, ser_val, 25)
+    convert_serde_value(lua, ser_val, 25)
+}
+
+fn convert_lua_value(lua: &Lua, lval: LuaValue, max_recurs: usize) -> Result<SerdeValue, LuaError> {
+    if max_recurs == 0 {
+        return Err(RuntimeError(String::from(
+            "Reached max recursion level - table is nested too deep",
+        )));
+    }
+
+    let sval = match lval {
+        LuaValue::Nil
+        | LuaValue::Thread(_)
+        | LuaValue::Function(_)
+        | LuaValue::UserData(_)
+        | LuaValue::LightUserData(_) => SerdeValue::Null,
+        LuaValue::Error(e) => SerdeValue::String(e.to_string()),
+        LuaValue::Boolean(b) => SerdeValue::Bool(b),
+        LuaValue::String(s) => SerdeValue::String(s.to_string_lossy().to_string()),
+        LuaValue::Integer(i) => SerdeValue::Number(serde_json::value::Number::from(i)),
+        LuaValue::Number(n) => match serde_json::value::Number::from_f64(n) {
+            Some(n) => SerdeValue::Number(n),
+            None => SerdeValue::Null,
+        },
+        LuaValue::Table(t) => {
+            let mut map = serde_json::Map::new();
+            for pair in t.pairs::<LuaValue, LuaValue>() {
+                let (k, v) = pair?;
+                map.insert(k.to_string()?, convert_lua_value(lua, v, max_recurs - 1)?);
+            }
+
+            SerdeValue::Object(map)
+        }
+    };
+
+    Ok(sval)
+}
+
+pub fn json_encode(lua: &Lua, lua_value: LuaValue) -> Result<String, LuaError> {
+    convert_lua_value(lua, lua_value, 25)
+        .map(|v| v.to_string())
+        .map_err(|e| RuntimeError(e.to_string()))
 }

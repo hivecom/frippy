@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::thread::{sleep, spawn};
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, time::Duration};
 
 use antidote::RwLock;
 use irc::client::prelude::*;
@@ -8,8 +8,8 @@ use irc::client::prelude::*;
 use chrono::{self, NaiveDateTime};
 use time;
 
-use crate::plugin::*;
 use crate::FrippyClient;
+use crate::{plugin::*, ConnectionPool};
 
 pub mod database;
 mod parser;
@@ -29,10 +29,10 @@ fn get_time() -> NaiveDateTime {
     NaiveDateTime::from_timestamp_opt(tm.sec, 0u32).unwrap()
 }
 
-fn get_events<T: Database>(db: &RwLock<T>, in_next: chrono::Duration) -> Vec<database::Event> {
+fn get_events(db: &ConnectionPool, in_next: chrono::Duration) -> Vec<database::Event> {
     loop {
         let before = get_time() + in_next;
-        match db.read().get_events_before(&before) {
+        match db.get_events_before(&before) {
             Ok(events) => return events,
             Err(e) => {
                 if e.kind() != ErrorKind::NotFound {
@@ -45,7 +45,7 @@ fn get_events<T: Database>(db: &RwLock<T>, in_next: chrono::Duration) -> Vec<dat
     }
 }
 
-fn run<T: Database, C: FrippyClient>(client: &C, db: Arc<RwLock<T>>) {
+fn run<C: FrippyClient>(client: &C, db: ConnectionPool) {
     let look_ahead = chrono::Duration::minutes(2);
 
     let mut events = get_events(&db, look_ahead);
@@ -67,12 +67,12 @@ fn run<T: Database, C: FrippyClient>(client: &C, db: Arc<RwLock<T>>) {
                     if let Some(repeat) = event.repeat {
                         let next_time = event.time + chrono::Duration::seconds(repeat);
 
-                        if let Err(e) = db.write().update_event_time(event.id, &next_time) {
+                        if let Err(e) = db.update_event_time(event.id, &next_time) {
                             error!("Failed to update reminder: {}", e);
                         } else {
                             debug!("Updated time");
                         }
-                    } else if let Err(e) = db.write().delete_event(event.id) {
+                    } else if let Err(e) = db.delete_event(event.id) {
                         error!("Failed to delete reminder: {}", e);
                     }
                 }
@@ -95,18 +95,16 @@ fn run<T: Database, C: FrippyClient>(client: &C, db: Arc<RwLock<T>>) {
 }
 
 #[derive(PluginName)]
-pub struct Remind<T: Database + 'static, C> {
-    events: Arc<RwLock<T>>,
+pub struct Remind<C> {
+    db: ConnectionPool,
     has_reminder: RwLock<bool>,
     phantom: PhantomData<C>,
 }
 
-impl<T: Database + 'static, C: FrippyClient> Remind<T, C> {
-    pub fn new(db: T) -> Self {
-        let events = Arc::new(RwLock::new(db));
-
+impl<C: FrippyClient> Remind<C> {
+    pub fn new(db: ConnectionPool) -> Self {
         Remind {
-            events,
+            db,
             has_reminder: RwLock::new(false),
             phantom: PhantomData,
         }
@@ -143,14 +141,13 @@ impl<T: Database + 'static, C: FrippyClient> Remind<T, C> {
 
         debug!("New event: {:?}", event);
 
-        self.events
-            .write()
+        self.db
             .insert_event(&event)
             .map(|id| format!("Created reminder with id {} at {} UTC", id, time))
     }
 
     fn list(&self, user: &str) -> Result<String, RemindError> {
-        let mut events = self.events.read().get_user_events(user)?;
+        let mut events = self.db.get_user_events(user)?;
 
         if events.is_empty() {
             Err(ErrorKind::NotFound)?;
@@ -171,19 +168,12 @@ impl<T: Database + 'static, C: FrippyClient> Remind<T, C> {
             .remove(0)
             .parse::<i64>()
             .context(ErrorKind::Parsing)?;
-        let event = self
-            .events
-            .read()
-            .get_event(id)
-            .context(ErrorKind::NotFound)?;
+        let event = self.db.get_event(id).context(ErrorKind::NotFound)?;
 
         if event.receiver.eq_ignore_ascii_case(&command.source)
             || event.author.eq_ignore_ascii_case(&command.source)
         {
-            self.events
-                .write()
-                .delete_event(id)
-                .map(|()| "Successfully deleted")
+            self.db.delete_event(id).map(|()| "Successfully deleted")
         } else {
             Ok("Only the author or receiver can delete a reminder")
         }
@@ -198,14 +188,14 @@ impl<T: Database + 'static, C: FrippyClient> Remind<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient + 'static> Plugin for Remind<T, C> {
+impl<C: FrippyClient + 'static> Plugin for Remind<C> {
     type Client = C;
     fn execute(&self, client: &Self::Client, msg: &Message) -> ExecutionStatus {
         if let Command::JOIN(_, _, _) = msg.command {
             let mut has_reminder = self.has_reminder.write();
 
             if !*has_reminder {
-                let events = Arc::clone(&self.events);
+                let events = self.db.clone();
                 let client = client.clone();
 
                 spawn(move || run(&client, events));
@@ -270,7 +260,7 @@ impl<T: Database, C: FrippyClient + 'static> Plugin for Remind<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> fmt::Debug for Remind<T, C> {
+impl<C: FrippyClient> fmt::Debug for Remind<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Remind {{ ... }}")
     }
@@ -332,12 +322,10 @@ pub mod error {
         NotFound,
 
         /// MySQL error
-        #[cfg(feature = "mysql")]
         #[fail(display = "Failed to execute MySQL Query")]
         MysqlError,
 
         /// No connection error
-        #[cfg(feature = "mysql")]
         #[fail(display = "No connection to the database")]
         NoConnection,
     }

@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use antidote::{Mutex, RwLock};
+use antidote::Mutex;
 use chrono::NaiveDateTime;
 use irc::client::prelude::*;
 use rand::{thread_rng, Rng};
@@ -16,6 +16,7 @@ use self::database::Database;
 use self::randomizer::RandomIndex;
 
 use crate::plugin::*;
+use crate::ConnectionPool;
 use crate::FrippyClient;
 
 use self::error::*;
@@ -34,19 +35,19 @@ enum PreviousCommand {
 }
 
 #[derive(PluginName)]
-pub struct Quote<T: Database, C: Client> {
-    quotes: RwLock<T>,
+pub struct Quote<C: Client> {
+    db: ConnectionPool,
     previous_map: Mutex<HashMap<String, PreviousCommand>>,
     phantom: PhantomData<C>,
     random_index: Mutex<RandomIndex>,
 }
 
-impl<T: Database, C: Client> Quote<T, C> {
-    pub fn new(db: T) -> Self {
+impl<C: Client> Quote<C> {
+    pub fn new(db: ConnectionPool) -> Self {
         let random_index = RandomIndex::new();
 
         Quote {
-            quotes: RwLock::new(db),
+            db,
             previous_map: Mutex::new(HashMap::new()),
             phantom: PhantomData,
             random_index: Mutex::new(random_index),
@@ -60,7 +61,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         content: &str,
         author: &str,
     ) -> Result<&str, QuoteError> {
-        let count = self.quotes.read().count_user_quotes(quotee, channel)?;
+        let count = self.db.count_user_quotes(quotee, channel)?;
         let tm = time::now().to_timespec();
 
         let quote = database::NewQuote {
@@ -74,8 +75,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         };
 
         let response = self
-            .quotes
-            .write()
+            .db
             .insert_quote(&quote)
             .map(|()| "Successfully added!")?;
 
@@ -126,7 +126,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         channel: &str,
         idx: Option<i32>,
     ) -> Result<String, QuoteError> {
-        let count = self.quotes.read().count_user_quotes(quotee, channel)?;
+        let count = self.db.count_user_quotes(quotee, channel)?;
         if count < 1 {
             Err(ErrorKind::NotFound)?;
         }
@@ -152,8 +152,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         }
 
         let quote = self
-            .quotes
-            .read()
+            .db
             .get_user_quote(quotee, channel, idx)
             .context(ErrorKind::NotFound)?;
 
@@ -166,7 +165,7 @@ impl<T: Database, C: Client> Quote<T, C> {
     }
 
     fn get_random(&self, channel: &str) -> Result<String, QuoteError> {
-        let count = self.quotes.read().count_channel_quotes(channel)?;
+        let count = self.db.count_channel_quotes(channel)?;
 
         if count < 1 {
             Err(ErrorKind::NotFound)?;
@@ -180,8 +179,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         let idx = binding.get().expect("Randomizer should be initialized");
 
         let quote = self
-            .quotes
-            .read()
+            .db
             .get_channel_quote(channel, *idx)
             .context(ErrorKind::NotFound)?;
 
@@ -257,8 +255,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         );
 
         let quote = self
-            .quotes
-            .read()
+            .db
             .search_user_quote(query, user, channel, offset)
             .context(ErrorKind::NotFound)?;
 
@@ -279,8 +276,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         );
 
         let quote = self
-            .quotes
-            .read()
+            .db
             .search_channel_quote(query, channel, offset)
             .context(ErrorKind::NotFound)?;
 
@@ -298,7 +294,7 @@ impl<T: Database, C: Client> Quote<T, C> {
         match tokens.len() {
             0 => {
                 let channel = &command.target;
-                let count = self.quotes.read().count_channel_quotes(channel)?;
+                let count = self.db.count_channel_quotes(channel)?;
 
                 Ok(match count {
                     0 => Err(ErrorKind::NotFound)?,
@@ -309,7 +305,7 @@ impl<T: Database, C: Client> Quote<T, C> {
             1 => {
                 let quotee = &command.tokens[0];
                 let channel = &command.target;
-                let count = self.quotes.read().count_user_quotes(quotee, channel)?;
+                let count = self.db.count_user_quotes(quotee, channel)?;
 
                 Ok(match count {
                     0 => Err(ErrorKind::NotFound)?,
@@ -323,14 +319,13 @@ impl<T: Database, C: Client> Quote<T, C> {
                 let idx = i32::from_str(&command.tokens[1]).context(ErrorKind::InvalidIndex)?;
 
                 let idx = if idx < 0 {
-                    self.quotes.read().count_user_quotes(quotee, channel)? + idx + 1
+                    self.db.count_user_quotes(quotee, channel)? + idx + 1
                 } else {
                     idx
                 };
 
                 let quote = self
-                    .quotes
-                    .read()
+                    .db
                     .get_user_quote(quotee, channel, idx)
                     .context(ErrorKind::NotFound)?;
 
@@ -354,7 +349,7 @@ impl<T: Database, C: Client> Quote<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> Plugin for Quote<T, C> {
+impl<C: FrippyClient> Plugin for Quote<C> {
     type Client = C;
     fn execute(&self, _: &Self::Client, _: &Message) -> ExecutionStatus {
         ExecutionStatus::Done
@@ -415,7 +410,7 @@ impl<T: Database, C: FrippyClient> Plugin for Quote<T, C> {
     }
 }
 
-impl<T: Database, C: FrippyClient> fmt::Debug for Quote<T, C> {
+impl<C: FrippyClient> fmt::Debug for Quote<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Quote {{ ... }}")
     }
@@ -457,12 +452,10 @@ pub mod error {
         NotFound,
 
         /// MySQL error
-        #[cfg(feature = "mysql")]
         #[fail(display = "Failed to execute MySQL Query")]
         MysqlError,
 
         /// No connection error
-        #[cfg(feature = "mysql")]
         #[fail(display = "No connection to the database")]
         NoConnection,
     }

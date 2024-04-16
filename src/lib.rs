@@ -52,8 +52,11 @@ pub mod plugins {
 use crate::plugin::*;
 
 use crate::error::*;
+use diesel::r2d2::ConnectionManager;
+use diesel::MysqlConnection;
 use failure::ResultExt;
 use log::{debug, error, info};
+use r2d2::Pool;
 use regex::Regex;
 
 pub use irc::client::data::Config;
@@ -67,6 +70,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::thread;
+
+type ConnectionPool = Pool<ConnectionManager<MysqlConnection>>;
 
 pub trait FrippyClient: Client + Send + Sync + Clone + fmt::Debug {
     fn current_nickname(&self) -> &str;
