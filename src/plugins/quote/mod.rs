@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use antidote::Mutex;
-use chrono::NaiveDateTime;
+use chrono::DateTime;
 use irc::client::prelude::*;
 use rand::{thread_rng, Rng};
 use time;
@@ -70,8 +70,9 @@ impl<C: Client> Quote<C> {
             idx: count + 1,
             content,
             author,
-            created: NaiveDateTime::from_timestamp_opt(tm.sec, 0u32)
-                .expect("fails after death of universe"),
+            created: DateTime::from_timestamp(tm.sec, 0u32)
+                .expect("fails after death of universe")
+                .naive_utc(),
         };
 
         let response = self

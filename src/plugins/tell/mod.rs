@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
+use chrono::DateTime;
 use irc::client::data::User;
 use irc::client::prelude::*;
 
-use chrono::NaiveDateTime;
 use humantime::format_duration;
 use itertools::Itertools;
 use std::time::Duration;
@@ -91,7 +91,7 @@ impl<C: FrippyClient> Tell<C> {
             let tell = database::NewTellMessage {
                 sender: &sender,
                 receiver: &receiver.to_lowercase(),
-                time: NaiveDateTime::from_timestamp_opt(tm.sec, 0u32).unwrap(),
+                time: DateTime::from_timestamp(tm.sec, 0u32).unwrap().naive_utc(),
                 message: &message,
             };
 
@@ -148,7 +148,7 @@ impl<C: FrippyClient> Tell<C> {
 
         for tell in tell_messages {
             let now = Duration::new(time::now().to_timespec().sec as u64, 0);
-            let dur = now - Duration::new(tell.time.timestamp() as u64, 0);
+            let dur = now - Duration::new(tell.time.and_utc().timestamp() as u64, 0);
             let human_dur = format_duration(dur);
 
             let message = format!(

@@ -9,7 +9,7 @@ use irc::client::prelude::*;
 use mlua::prelude::*;
 use mlua::HookTriggers;
 
-use chrono::NaiveDateTime;
+use chrono::DateTime;
 use time;
 
 use crate::FrippyClient;
@@ -60,8 +60,9 @@ impl<C: Client> Factoid<C> {
             idx: count,
             content,
             author,
-            created: NaiveDateTime::from_timestamp_opt(tm.sec, 0u32)
-                .expect("fails after death of universe"),
+            created: DateTime::from_timestamp(tm.sec, 0u32)
+                .expect("fails after death of universe")
+                .naive_utc(),
         };
 
         insert_factoid(&self.db, &factoid).map(|()| "Successfully added!")

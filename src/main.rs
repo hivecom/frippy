@@ -22,11 +22,7 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 fn main() {
     if let Err(e) = log4rs::init_file("log.yml", Default::default()) {
-        use log4rs::Error;
-        match e {
-            Error::Log(e) => eprintln!("Log4rs error: {}", e),
-            Error::Log4rs(e) => eprintln!("Failed to parse \"log.yml\" as log4rs config: {}", e),
-        }
+        eprintln!("Log4rs init error: {}", e);
 
         return;
     }

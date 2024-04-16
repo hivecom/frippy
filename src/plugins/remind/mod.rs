@@ -5,7 +5,7 @@ use std::{fmt, time::Duration};
 use antidote::RwLock;
 use irc::client::prelude::*;
 
-use chrono::{self, NaiveDateTime};
+use chrono::{self, DateTime, NaiveDateTime};
 use time;
 
 use crate::FrippyClient;
@@ -26,7 +26,7 @@ use frippy_derive::PluginName;
 
 fn get_time() -> NaiveDateTime {
     let tm = time::now().to_timespec();
-    NaiveDateTime::from_timestamp_opt(tm.sec, 0u32).unwrap()
+    DateTime::from_timestamp(tm.sec, 0u32).unwrap().naive_utc()
 }
 
 fn get_events(db: &ConnectionPool, in_next: chrono::Duration) -> Vec<database::Event> {

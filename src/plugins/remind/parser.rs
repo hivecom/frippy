@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 use humantime::parse_duration;
 use std::time::Duration;
 use time;
@@ -153,6 +153,7 @@ impl CommandParser {
                     .unwrap()
                     .and_hms_opt(0, 0, 0)
                     .unwrap()
+                    .and_utc()
                     .timestamp()
                     < now.to_timespec().sec
                 {
@@ -194,8 +195,9 @@ impl CommandParser {
 
             let tm = time::now().to_timespec();
             return Ok(
-                NaiveDateTime::from_timestamp_opt(tm.sec + duration.as_secs() as i64, 0u32)
-                    .expect("fails after death of universe"),
+                DateTime::from_timestamp(tm.sec + duration.as_secs() as i64, 0u32)
+                    .expect("fails after death of universe")
+                    .naive_utc(),
             );
         }
 
@@ -220,7 +222,7 @@ impl CommandParser {
 
                 let time_today = today.and_time(time);
 
-                if time_today.timestamp() < now.to_timespec().sec {
+                if time_today.and_utc().timestamp() < now.to_timespec().sec {
                     debug!("tomorrow");
 
                     Ok(today.succ_opt().unwrap().and_time(time))
