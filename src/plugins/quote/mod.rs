@@ -9,6 +9,7 @@ use chrono::DateTime;
 use irc::client::prelude::*;
 use rand::{thread_rng, Rng};
 use time;
+use time::OffsetDateTime;
 
 pub mod database;
 pub mod randomizer;
@@ -62,7 +63,7 @@ impl<C: Client> Quote<C> {
         author: &str,
     ) -> Result<&str, QuoteError> {
         let count = self.db.count_user_quotes(quotee, channel)?;
-        let tm = time::now().to_timespec();
+        let odt = OffsetDateTime::now_utc();
 
         let quote = database::NewQuote {
             quotee,
@@ -70,7 +71,7 @@ impl<C: Client> Quote<C> {
             idx: count + 1,
             content,
             author,
-            created: DateTime::from_timestamp(tm.sec, 0u32)
+            created: DateTime::from_timestamp(odt.unix_timestamp(), 0u32)
                 .expect("fails after death of universe")
                 .naive_utc(),
         };

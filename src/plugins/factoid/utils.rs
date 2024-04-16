@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{self, Value as SerdeValue};
+use time::{format_description, Date, OffsetDateTime};
 
 use mlua::Error as LuaError;
 use mlua::Error::RuntimeError;
@@ -167,4 +168,22 @@ pub fn json_encode(lua: &Lua, lua_value: LuaValue) -> Result<String, LuaError> {
     convert_lua_value(lua, lua_value, 25)
         .map(|v| v.to_string())
         .map_err(|e| RuntimeError(e.to_string()))
+}
+
+pub fn parse_date(_: &Lua, (date, format): (String, String)) -> Result<i64, LuaError> {
+    let format = format_description::parse(&format).map_err(LuaError::external)?;
+
+    Date::parse(&date, &format)
+        .map_err(LuaError::external)
+        .and_then(|d| d.with_hms(0, 0, 0).map_err(LuaError::external))
+        .map(|td| td.assume_utc().unix_timestamp())
+}
+
+pub fn format_timestamp(_: &Lua, (timestamp, format): (i64, String)) -> Result<String, LuaError> {
+    let format = format_description::parse(&format).map_err(LuaError::external)?;
+
+    OffsetDateTime::from_unix_timestamp(timestamp)
+        .map(|d| d.format(&format))
+        .map_err(LuaError::external)
+        .and_then(|r| r.map_err(LuaError::external))
 }

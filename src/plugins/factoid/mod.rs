@@ -9,8 +9,7 @@ use irc::client::prelude::*;
 use mlua::prelude::*;
 use mlua::HookTriggers;
 
-use chrono::DateTime;
-use time;
+use time::{self, OffsetDateTime, PrimitiveDateTime};
 
 use crate::FrippyClient;
 use crate::{plugin::*, ConnectionPool};
@@ -51,16 +50,14 @@ impl<C: Client> Factoid<C> {
         author: &str,
     ) -> Result<&str, FactoidError> {
         let count = count_factoids(&self.db, name)?;
-        let tm = time::now().to_timespec();
+        let odt = OffsetDateTime::now_utc();
 
         let factoid = database::NewFactoid {
             name,
             idx: count,
             content,
             author,
-            created: DateTime::from_timestamp(tm.sec, 0u32)
-                .expect("fails after death of universe")
-                .naive_utc(),
+            created: PrimitiveDateTime::new(odt.date(), odt.time()),
         };
 
         insert_factoid(&self.db, &factoid).map(|()| "Successfully added!")
@@ -258,6 +255,8 @@ impl<C: Client> Factoid<C> {
         )?;
         globals.set("json_decode", lua.create_function(json_decode)?)?;
         globals.set("json_encode", lua.create_function(json_encode)?)?;
+        globals.set("parse_date", lua.create_function(parse_date)?)?;
+        globals.set("format_timestamp", lua.create_function(format_timestamp)?)?;
         globals.set("sleep", lua.create_function(sleep)?)?;
         globals.set("args", args)?;
         globals.set("input", command.tokens.join(" "))?;

@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 use humantime::parse_duration;
 use std::time::Duration;
-use time;
+use time::{self, OffsetDateTime};
 
 use super::error::*;
 use failure::ResultExt;
@@ -145,8 +145,8 @@ impl CommandParser {
                 NaiveDate::from_ymd_opt(*year as i32, month, day).ok_or(ErrorKind::InvalidDate)?
             }
             None => {
-                let now = time::now();
-                let date = NaiveDate::from_ymd_opt(now.tm_year + 1900, month, day)
+                let odt = OffsetDateTime::now_utc();
+                let date = NaiveDate::from_ymd_opt(odt.year(), month, day)
                     .ok_or(ErrorKind::InvalidDate)?;
                 if date
                     .succ_opt()
@@ -155,9 +155,9 @@ impl CommandParser {
                     .unwrap()
                     .and_utc()
                     .timestamp()
-                    < now.to_timespec().sec
+                    < odt.unix_timestamp()
                 {
-                    NaiveDate::from_ymd_opt(now.tm_year + 1901, month, day)
+                    NaiveDate::from_ymd_opt(odt.year() + 1, month, day)
                         .ok_or(ErrorKind::InvalidDate)?
                 } else {
                     date
@@ -193,12 +193,13 @@ impl CommandParser {
                 return Err(ErrorKind::TimeShort.into());
             }
 
-            let tm = time::now().to_timespec();
-            return Ok(
-                DateTime::from_timestamp(tm.sec + duration.as_secs() as i64, 0u32)
-                    .expect("fails after death of universe")
-                    .naive_utc(),
-            );
+            let odt = OffsetDateTime::now_utc();
+            return Ok(DateTime::from_timestamp(
+                odt.unix_timestamp() + duration.as_secs() as i64,
+                0u32,
+            )
+            .expect("fails after death of universe")
+            .naive_utc());
         }
 
         let mut date = None;
@@ -212,17 +213,14 @@ impl CommandParser {
             if let Some(date) = date {
                 Ok(date.and_time(time))
             } else {
-                let now = time::now();
-                let today = NaiveDate::from_ymd_opt(
-                    now.tm_year + 1900,
-                    now.tm_mon as u32 + 1,
-                    now.tm_mday as u32,
-                )
-                .ok_or(ErrorKind::InvalidDate)?;
+                let now = OffsetDateTime::now_utc();
+                let today =
+                    NaiveDate::from_ymd_opt(now.year(), now.month() as u32, now.day() as u32)
+                        .ok_or(ErrorKind::InvalidDate)?;
 
                 let time_today = today.and_time(time);
 
-                if time_today.and_utc().timestamp() < now.to_timespec().sec {
+                if time_today.and_utc().timestamp() < now.unix_timestamp() {
                     debug!("tomorrow");
 
                     Ok(today.succ_opt().unwrap().and_time(time))

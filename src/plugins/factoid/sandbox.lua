@@ -33,6 +33,8 @@ local sandbox_env = {
   eval = nil,
   sleep = nil,
   json = {decode = json_decode, encode = json_encode},
+  date = {parse = parse_date},
+  timestamp = {format = format_timestamp},
   retrieve = retrieve,
   persist = persist,
   args = args,

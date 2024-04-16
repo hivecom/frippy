@@ -1,7 +1,6 @@
 use diesel::prelude::*;
 use failure::ResultExt;
-
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 
 use crate::ConnectionPool;
 
@@ -13,7 +12,7 @@ pub struct Factoid {
     pub idx: i32,
     pub content: String,
     pub author: String,
-    pub created: NaiveDateTime,
+    pub created: PrimitiveDateTime,
 }
 
 #[derive(Insertable)]
@@ -23,7 +22,7 @@ pub struct NewFactoid<'a> {
     pub idx: i32,
     pub content: &'a str,
     pub author: &'a str,
-    pub created: NaiveDateTime,
+    pub created: PrimitiveDateTime,
 }
 
 // Diesel automatically defines the factoids module as public.
