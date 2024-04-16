@@ -120,7 +120,7 @@ pub fn get_lua_value(db: &ConnectionPool, key: String) -> Result<Option<String>,
 pub fn set_lua_value(db: &ConnectionPool, key: String, value: String) -> Result<(), FactoidError> {
     let mut conn = db.get().context(ErrorKind::NoConnection)?;
 
-    diesel::insert_into(lua_values::table)
+    diesel::replace_into(lua_values::table)
         .values((
             lua_values::columns::key.eq(key),
             lua_values::columns::value.eq(value),

@@ -12,11 +12,29 @@ use mlua::{Lua, Value as LuaValue};
 
 use crate::utils::error::ErrorKind::Connection;
 use crate::utils::Url;
+use crate::ConnectionPool;
 
 use failure::Fail;
 
+use super::database::set_lua_value;
+
 pub fn sleep(_: &Lua, dur: u64) -> Result<(), LuaError> {
     thread::sleep(Duration::from_millis(dur));
+    Ok(())
+}
+
+pub fn persist(db: &ConnectionPool, key: String, value: String) -> Result<(), LuaError> {
+    if key.len() > 32 {
+        return Err(LuaError::external("Key can't be longer than 32 characters"));
+    }
+    if value.len() > 5120 {
+        return Err(LuaError::external(
+            "Value can't be longer than 5120 characters",
+        ));
+    }
+
+    set_lua_value(db, key, value).map_err(|e| LuaError::external(e.to_string()))?;
+
     Ok(())
 }
 

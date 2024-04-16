@@ -17,9 +17,7 @@ use crate::{plugin::*, ConnectionPool};
 pub mod database;
 
 mod utils;
-use self::database::{
-    count_factoids, delete_factoid, get_factoid, get_lua_value, insert_factoid, set_lua_value,
-};
+use self::database::{count_factoids, delete_factoid, get_factoid, get_lua_value, insert_factoid};
 use self::utils::*;
 use crate::utils::Url;
 
@@ -249,10 +247,7 @@ impl<C: Client> Factoid<C> {
         let db = self.db.clone();
         globals.set(
             "persist",
-            lua.create_function(move |_, (key, value)| {
-                set_lua_value(&db.clone(), key, value)
-                    .map_err(|e| LuaError::external(e.to_string()))
-            })?,
+            lua.create_function(move |_, (key, value)| persist(&db.clone(), key, value))?,
         )?;
         let db = self.db.clone();
         globals.set(
