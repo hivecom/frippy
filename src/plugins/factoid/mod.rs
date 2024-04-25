@@ -18,7 +18,7 @@ pub mod database;
 mod utils;
 use self::database::{count_factoids, delete_factoid, get_factoid, get_lua_value, insert_factoid};
 use self::utils::*;
-use crate::utils::Url;
+use crate::utils::Request;
 
 use self::error::*;
 use crate::error::ErrorKind as FrippyErrorKind;
@@ -81,9 +81,9 @@ impl<C: Client> Factoid<C> {
 
         let name = command.tokens.remove(0);
         let url = &command.tokens[0];
-        let content = Url::from(url.as_ref())
+        let content = Request::from(url.as_ref())
             .max_kib(1024)
-            .request()
+            .execute()
             .context(ErrorKind::Download)?;
 
         self.create_factoid(&name, &content, &command.source)
@@ -237,10 +237,7 @@ impl<C: Client> Factoid<C> {
         let globals = lua.globals();
 
         globals.set("factoid", code)?;
-        globals.set(
-            "download",
-            lua.create_function(|_, (url, headers)| download(url, headers))?,
-        )?;
+        globals.set("download", lua.create_function(download)?)?;
         let db = self.db.clone();
         globals.set(
             "persist",

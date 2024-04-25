@@ -3,42 +3,54 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, CONNECTION};
-use reqwest::{Client, ClientBuilder};
+use reqwest::{Body, Client, ClientBuilder, Method};
 
 use self::error::{DownloadError, ErrorKind};
 use failure::ResultExt;
 
-#[derive(Clone, Debug)]
-pub struct Url<'a> {
+#[derive(Debug)]
+pub struct Request<'a> {
     url: Cow<'a, str>,
+
     headers: Option<HeaderMap>,
+    method: Method,
+    body: Option<Body>,
+
     max_kib: Option<usize>,
     timeout: Option<Duration>,
 }
 
-impl<'a> From<String> for Url<'a> {
+impl<'a> From<String> for Request<'a> {
     fn from(url: String) -> Self {
-        Url {
+        Self {
             url: Cow::from(url),
+
+            method: Method::GET,
             headers: None,
+            body: None,
+
             max_kib: None,
             timeout: None,
         }
     }
 }
 
-impl<'a> From<&'a str> for Url<'a> {
+impl<'a> From<&'a str> for Request<'a> {
     fn from(url: &'a str) -> Self {
-        Url {
+        Self {
             url: Cow::from(url),
+
+            method: Method::GET,
             headers: None,
+            body: None,
+
             max_kib: None,
             timeout: None,
         }
     }
 }
 
-impl<'a> Url<'a> {
+impl<'a> Request<'a> {
     pub fn max_kib(mut self, limit: usize) -> Self {
         self.max_kib = Some(limit);
         self
@@ -54,12 +66,22 @@ impl<'a> Url<'a> {
         self
     }
 
+    pub fn method(mut self, method: Method) -> Self {
+        self.method = method;
+        self
+    }
+
+    pub fn body<B: Into<Body>>(mut self, body: B) -> Self {
+        self.body = Some(body.into());
+        self
+    }
+
     /// Downloads the file and converts it to a String.
     /// Any invalid bytes are converted to a replacement character.
     ///
     /// The error indicated either a failed download or
     /// that the limit set by max_kib() was reached.
-    pub fn request(&self) -> Result<String, DownloadError> {
+    pub fn execute(mut self) -> Result<String, DownloadError> {
         let client = if let Some(timeout) = self.timeout {
             ClientBuilder::new().timeout(timeout).build().unwrap()
         } else {
@@ -68,8 +90,12 @@ impl<'a> Url<'a> {
 
         let mut request = client.get(self.url.as_ref());
 
-        if let Some(headers) = self.headers.clone() {
+        if let Some(headers) = self.headers.take() {
             request = request.headers(headers)
+        }
+
+        if let Some(body) = self.body.take() {
+            request = request.body(body)
         }
 
         let mut response = request

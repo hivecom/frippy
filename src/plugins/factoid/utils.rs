@@ -4,15 +4,16 @@ use std::thread;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::Method;
 use serde_json::{self, Value as SerdeValue};
 use time::{format_description, Date, OffsetDateTime};
 
-use mlua::Error as LuaError;
 use mlua::Error::RuntimeError;
+use mlua::{Error as LuaError, ErrorContext, FromLua};
 use mlua::{Lua, Value as LuaValue};
 
 use crate::utils::error::ErrorKind::Connection;
-use crate::utils::Url;
+use crate::utils::Request;
 use crate::ConnectionPool;
 
 use failure::Fail;
@@ -39,22 +40,44 @@ pub fn persist(db: &ConnectionPool, key: String, value: String) -> Result<(), Lu
     Ok(())
 }
 
-pub fn download(url: String, headers: Option<HashMap<String, String>>) -> Result<String, LuaError> {
-    let mut url = Url::from(url).max_kib(1024);
+pub fn download(
+    lua: &Lua,
+    (url, options): (String, Option<HashMap<String, LuaValue>>),
+) -> Result<String, LuaError> {
+    let mut request = Request::from(url.as_ref())
+        .max_kib(1024)
+        .timeout(Duration::from_secs(10));
 
-    if let Some(headers) = headers {
-        let mut header_map = HeaderMap::new();
+    if let Some(mut options) = options {
+        if let Some(method) = options.remove("method") {
+            let method = method
+                .as_string_lossy()
+                .ok_or(LuaError::external("Method must be String"))?;
 
-        for (key, value) in headers {
-            let parsed_key = HeaderName::from_str(&key).map_err(LuaError::external)?;
-            let parsed_value = HeaderValue::from_str(&value).map_err(LuaError::external)?;
-            header_map.insert(parsed_key, parsed_value);
+            request = request.method(Method::from_str(&method).map_err(LuaError::external)?);
         }
 
-        url = url.headers(header_map);
-    }
+        if let Some(headers) = options.remove("headers") {
+            let mut header_map = HeaderMap::new();
 
-    match url.request() {
+            for (key, value) in HashMap::<String, String>::from_lua(headers, lua)? {
+                let parsed_key = HeaderName::from_str(&key).map_err(LuaError::external)?;
+                let parsed_value = HeaderValue::from_str(&value).map_err(LuaError::external)?;
+                header_map.insert(parsed_key, parsed_value);
+            }
+
+            request = request.headers(header_map);
+        }
+
+        if let Some(body) = options.remove("body") {
+            let body = String::from_lua(body, lua)
+                .map_err(|e| e.with_context(|_| "Failed to read body"))?;
+            request = request.body(body);
+        }
+    }
+    dbg!(&request);
+
+    match request.execute() {
         Ok(v) => Ok(v),
         Err(e) => {
             let error = match e.kind() {

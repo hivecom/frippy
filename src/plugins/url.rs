@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::plugin::*;
-use crate::utils::Url;
+use crate::utils::Request;
 use crate::FrippyClient;
 
 use self::error::*;
@@ -119,23 +119,24 @@ impl<C: FrippyClient> UrlTitles<C> {
         }
     }
 
-    fn grep_url<'a>(&self, msg: &'a str) -> Option<Url<'a>> {
+    fn grep_url<'a>(&self, msg: &'a str) -> Option<&'a str> {
         let captures = URL_RE.captures(msg)?;
         debug!("Url captures: {:?}", captures);
 
-        Some(captures.get(2)?.as_str().into())
+        Some(captures.get(2)?.as_str())
     }
 
     fn url(&self, text: &str) -> Result<String, UrlError> {
-        let url = self
-            .grep_url(text)
-            .ok_or(ErrorKind::MissingUrl)?
+        let url = self.grep_url(text).ok_or(ErrorKind::MissingUrl)?;
+
+        let request = Request::from(url)
             .max_kib(self.max_kib)
             .timeout(Duration::from_secs(5));
-        let body = url.request().context(ErrorKind::Download)?;
 
-        let title = Title::find_clean_title(&body, url.as_str());
-        let og_title = Title::find_clean_ogtitle(&body, url.as_str());
+        let body = request.execute().context(ErrorKind::Download)?;
+
+        let title = Title::find_clean_title(&body, url);
+        let og_title = Title::find_clean_ogtitle(&body, url);
 
         let title = match (title, og_title) {
             (Ok(title), Ok(og_title)) => {
