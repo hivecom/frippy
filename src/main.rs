@@ -99,7 +99,7 @@ fn run() -> Result<(), Error> {
 
         let mut bot = frippy::Bot::new(&prefix);
         bot.add_plugin(Help::new());
-        bot.add_plugin(UrlTitles::new(urls_whitelisted, 1024)?);
+        bot.add_plugin(UrlTitles::new(urls_whitelisted, 5120)?);
         bot.add_plugin(Sed::new(60));
         bot.add_plugin(Unicode::new());
         bot.add_plugin(KeepNick::new());
