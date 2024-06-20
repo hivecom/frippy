@@ -3,7 +3,6 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use glob::glob;
 use irc::client::reactor::IrcReactor;
 
-use frippy::plugins::counter::Counter;
 use frippy::plugins::factoid::Factoid;
 use frippy::plugins::help::Help;
 use frippy::plugins::keepnick::KeepNick;
@@ -13,6 +12,7 @@ use frippy::plugins::sed::Sed;
 use frippy::plugins::tell::Tell;
 use frippy::plugins::unicode::Unicode;
 use frippy::plugins::url::UrlTitles;
+use frippy::plugins::{counter::Counter, ollama::Ollama};
 
 use failure::{bail, format_err, Error};
 use frippy::Config;
@@ -63,17 +63,22 @@ fn run() -> Result<(), Error> {
     // Open a connection and add work for each config
     for config in configs {
         let mut disabled_plugins = None;
-        let (mysql_url, prefix) = if let Some(ref options) = config.options {
+        let (mysql_url, prefix, ollama_url, ollama_model) = if let Some(ref options) =
+            config.options
+        {
             if let Some(disabled) = options.get("disabled_plugins") {
                 disabled_plugins = Some(disabled.split(',').map(|p| p.trim()).collect::<Vec<_>>());
             }
             let prefix = options.get("prefix");
 
-            let url = options
+            let mysql_url = options
                 .get("mysql_url")
                 .ok_or(format_err!("Must set mysql_url"))?;
 
-            (url, prefix)
+            let ollama_url = options.get("ollama_url");
+            let ollama_model = options.get("ollama_model");
+
+            (mysql_url, prefix, ollama_url, ollama_model)
         } else {
             bail!("Must set mysql_url option");
         };
@@ -86,6 +91,11 @@ fn run() -> Result<(), Error> {
         bot.add_plugin(Sed::new(60));
         bot.add_plugin(Unicode::new());
         bot.add_plugin(KeepNick::new());
+        if let Some(url) = ollama_url {
+            if let Some(model) = ollama_model {
+                bot.add_plugin(Ollama::new(url.to_owned(), model.to_owned()));
+            }
+        }
 
         {
             let manager = ConnectionManager::<MysqlConnection>::new(mysql_url);

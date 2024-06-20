@@ -41,6 +41,7 @@ pub mod plugins {
     pub mod factoid;
     pub mod help;
     pub mod keepnick;
+    pub mod ollama;
     pub mod quote;
     pub mod remind;
     pub mod sed;
@@ -378,5 +379,42 @@ impl<C: FrippyClient> fmt::Display for ThreadedPlugins<C> {
             .map(|p| p.name().to_owned())
             .collect::<Vec<String>>();
         write!(f, "{}", plugin_names.join(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use irc::{client::ClientStream, error::IrcError};
+
+    use super::*;
+
+    #[derive(Clone, Debug)]
+    pub struct TestClient;
+    impl Client for TestClient {
+        fn config(&self) -> &Config {
+            todo!()
+        }
+        fn send<M: Into<Message>>(&self, message: M) -> Result<(), IrcError>
+        where
+            Self: Sized,
+        {
+            dbg!(message.into());
+            Ok(())
+        }
+        fn stream(&self) -> ClientStream {
+            todo!()
+        }
+        fn list_users(&self, _: &str) -> Option<Vec<irc::client::data::user::User>> {
+            todo!()
+        }
+        fn list_channels(&self) -> Option<Vec<String>> {
+            todo!()
+        }
+    }
+
+    impl FrippyClient for TestClient {
+        fn current_nickname(&self) -> &str {
+            "test"
+        }
     }
 }

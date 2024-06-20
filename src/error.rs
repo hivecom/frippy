@@ -49,4 +49,8 @@ pub enum ErrorKind {
     /// A Counter error
     #[fail(display = "A Counter error has occured")]
     Counter,
+
+    /// A Ollama error
+    #[fail(display = "An Ollama error has occured")]
+    Ollama,
 }

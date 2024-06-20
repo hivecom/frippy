@@ -29,3 +29,16 @@ source = "https://github.com/Mavulp/frippy"
 #disabled_plugins = "Url"
 # If no database url is set a HashMap is used
 #mysql_url = "mysql://user:password@address/db"
+# Both have to be set to load the ollama plugin
+#ollama_url = "http://localhost:11434/api/generate"
+#ollama_model = "tinyllama"
+# Converts messages from a bridge
+#bridge_name = "bot"
+# How username and message should be extracted - uses https://docs.rs/regex/ syntax
+# Keep in mind that TOML expects backslashes to be escaped
+#bridge_regex = "\\((?P<username>.*)\\) \u000f(?P<message>.*)$"
+# Alternatively if the bridge uses IRCv3 relay nicks this can extract the username instead
+#bridge_relay_format = "(?P<username>.+)/"
+# Ignore messages that should not get parsed
+#bridge_ignore_regex = " \\(edited\\)"
+#bridge_remove_zws = "true"
