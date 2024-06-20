@@ -32,6 +32,8 @@ source = "https://github.com/Mavulp/frippy"
 # Both have to be set to load the ollama plugin
 #ollama_url = "http://localhost:11434/api/generate"
 #ollama_model = "tinyllama"
+# If not set the URL plugin tries to find the title for all urls
+#urls_whitelisted = "youtube\\.com,youtu\\.be"
 # Converts messages from a bridge
 #bridge_name = "bot"
 # How username and message should be extracted - uses https://docs.rs/regex/ syntax

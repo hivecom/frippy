@@ -27,6 +27,7 @@ lazy_static! {
 #[derive(PluginName, Debug)]
 pub struct UrlTitles<C> {
     max_kib: usize,
+    whitelist: Vec<Regex>,
     phantom: PhantomData<C>,
 }
 
@@ -112,11 +113,18 @@ impl Title {
 
 impl<C: FrippyClient> UrlTitles<C> {
     /// If a file is larger than `max_kib` KiB the download is stopped
-    pub fn new(max_kib: usize) -> Self {
-        UrlTitles {
+    pub fn new(whitelist: Vec<&str>, max_kib: usize) -> Result<Self, UrlError> {
+        let whitelist = whitelist
+            .into_iter()
+            .map(Regex::new)
+            .collect::<Result<Vec<_>, regex::Error>>()
+            .context(ErrorKind::WhitelistRegex)?;
+
+        Ok(UrlTitles {
             max_kib,
+            whitelist,
             phantom: PhantomData,
-        }
+        })
     }
 
     fn grep_url<'a>(&self, msg: &'a str) -> Option<&'a str> {
@@ -128,6 +136,18 @@ impl<C: FrippyClient> UrlTitles<C> {
 
     fn url(&self, text: &str) -> Result<String, UrlError> {
         let url = self.grep_url(text).ok_or(ErrorKind::MissingUrl)?;
+
+        if !self.whitelist.is_empty() {
+            let mut whitelisted = false;
+            for re in &self.whitelist {
+                if re.is_match(url) {
+                    whitelisted = true;
+                }
+            }
+            if !whitelisted {
+                Err(ErrorKind::IgnoredUrl)?;
+            }
+        }
 
         let request = Request::from(url)
             .max_kib(self.max_kib)
@@ -232,8 +252,16 @@ pub mod error {
         #[fail(display = "The titles found were not useful enough")]
         UselessTitle,
 
+        /// Ignored url error
+        #[fail(display = "The URL was not in the whitelist")]
+        IgnoredUrl,
+
         /// Html decoding error
         #[fail(display = "Failed to decode Html characters")]
         HtmlDecoding,
+
+        /// Regex compile error
+        #[fail(display = "Failed to compile whitelist regex")]
+        WhitelistRegex,
     }
 }

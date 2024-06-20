@@ -152,7 +152,11 @@ pub fn json_decode(lua: &Lua, json: String) -> Result<LuaValue, LuaError> {
     convert_serde_value(lua, ser_val, 25)
 }
 
-fn convert_lua_value(lua: &Lua, lval: LuaValue, max_recurs: usize) -> Result<SerdeValue, LuaError> {
+fn convert_lua_value(
+    _lua: &Lua,
+    lval: LuaValue,
+    max_recurs: usize,
+) -> Result<SerdeValue, LuaError> {
     if max_recurs == 0 {
         return Err(RuntimeError(String::from(
             "Reached max recursion level - table is nested too deep",
@@ -177,7 +181,7 @@ fn convert_lua_value(lua: &Lua, lval: LuaValue, max_recurs: usize) -> Result<Ser
             let mut map = serde_json::Map::new();
             for pair in t.pairs::<LuaValue, LuaValue>() {
                 let (k, v) = pair?;
-                map.insert(k.to_string()?, convert_lua_value(lua, v, max_recurs - 1)?);
+                map.insert(k.to_string()?, convert_lua_value(_lua, v, max_recurs - 1)?);
             }
 
             SerdeValue::Object(map)

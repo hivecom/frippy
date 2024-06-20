@@ -63,31 +63,43 @@ fn run() -> Result<(), Error> {
     // Open a connection and add work for each config
     for config in configs {
         let mut disabled_plugins = None;
-        let (mysql_url, prefix, ollama_url, ollama_model) = if let Some(ref options) =
-            config.options
-        {
-            if let Some(disabled) = options.get("disabled_plugins") {
-                disabled_plugins = Some(disabled.split(',').map(|p| p.trim()).collect::<Vec<_>>());
-            }
-            let prefix = options.get("prefix");
+        let (mysql_url, prefix, ollama_url, ollama_model, urls_whitelisted) =
+            if let Some(ref options) = config.options {
+                if let Some(disabled) = options.get("disabled_plugins") {
+                    disabled_plugins =
+                        Some(disabled.split(',').map(|p| p.trim()).collect::<Vec<_>>());
+                }
+                let prefix = options.get("prefix");
 
-            let mysql_url = options
-                .get("mysql_url")
-                .ok_or(format_err!("Must set mysql_url"))?;
+                let mysql_url = options
+                    .get("mysql_url")
+                    .ok_or(format_err!("Must set mysql_url"))?;
 
-            let ollama_url = options.get("ollama_url");
-            let ollama_model = options.get("ollama_model");
+                let ollama_url = options.get("ollama_url");
+                let ollama_model = options.get("ollama_model");
+                let urls_whitelisted = options
+                    .get("urls_whitelisted")
+                    .map(|uw| &**uw)
+                    .unwrap_or("")
+                    .split(',')
+                    .collect();
 
-            (mysql_url, prefix, ollama_url, ollama_model)
-        } else {
-            bail!("Must set mysql_url option");
-        };
+                (
+                    mysql_url,
+                    prefix,
+                    ollama_url,
+                    ollama_model,
+                    urls_whitelisted,
+                )
+            } else {
+                bail!("Must set mysql_url option");
+            };
 
         let prefix = prefix.cloned().unwrap_or_else(|| String::from("."));
 
         let mut bot = frippy::Bot::new(&prefix);
         bot.add_plugin(Help::new());
-        bot.add_plugin(UrlTitles::new(1024));
+        bot.add_plugin(UrlTitles::new(urls_whitelisted, 1024)?);
         bot.add_plugin(Sed::new(60));
         bot.add_plugin(Unicode::new());
         bot.add_plugin(KeepNick::new());

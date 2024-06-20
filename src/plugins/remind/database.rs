@@ -7,7 +7,7 @@ use failure::ResultExt;
 use super::error::*;
 use crate::ConnectionPool;
 
-static LAST_ID_SQL: &'static str = "SELECT LAST_INSERT_ID()";
+static LAST_ID_SQL: &str = "SELECT LAST_INSERT_ID()";
 
 #[derive(Queryable, Clone, Debug)]
 pub struct Event {
