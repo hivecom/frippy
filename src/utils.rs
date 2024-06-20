@@ -88,7 +88,7 @@ impl<'a> Request<'a> {
             Client::new()
         };
 
-        let mut request = client.get(self.url.as_ref());
+        let mut request = client.request(self.method, self.url.as_ref());
 
         if let Some(headers) = self.headers.take() {
             request = request.headers(headers)
