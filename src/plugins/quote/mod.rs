@@ -7,7 +7,7 @@ use std::str::FromStr;
 use antidote::Mutex;
 use chrono::DateTime;
 use irc::client::prelude::*;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use time;
 use time::OffsetDateTime;
 
@@ -146,7 +146,7 @@ impl<C: Client> Quote<C> {
                 PreviousCommand::GetUser(quotee.to_owned(), None),
             );
 
-            thread_rng().gen_range(1, count + 1)
+            rng().random_range(1..count + 1)
         };
 
         if idx < 0 {

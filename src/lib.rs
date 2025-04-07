@@ -1,6 +1,3 @@
-#![cfg_attr(feature = "clippy", feature(plugin))]
-#![cfg_attr(feature = "clippy", plugin(clippy))]
-
 //! Frippy is an IRC bot that runs plugins on each message
 //! received.
 //!

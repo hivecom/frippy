@@ -15,38 +15,35 @@ name = "frippy"
 doc = false
 
 [dependencies]
-irc             = "0.13.6"
-log             = "0.4.21"
-time = { version = "0.3.36", features = ["formatting", "parsing"] }
-humantime       = "1.3.0"
-mlua = { version = "0.9.7", features = ["lua54"] }
-reqwest         = "0.9.24"
-regex           = "1.10.4"
-lazy_static     = "1.4.0"
-serde           = "1.0.197"
-serde_json      = "1.0.116"
-chrono          = "0.4.38"
-glob            = "0.3.1"
-circular-queue  = "0.2.6"
-failure         = "0.1.8"
-htmlescape      = "0.3.1"
-antidote        = "1.0.0"
-log4rs          = "1.3.0"
-itertools       = "0.8.2"
+irc = "0.13.6"
+log = "0.4.27"
+time = { version = "0.3.41", features = ["formatting", "parsing"] }
+humantime = "1.3.0"
+mlua = { version = "0.10.3", features = ["lua54"] }
+reqwest = "0.9.24"
+regex = "1.11.1"
+lazy_static = "1.5.0"
+serde = "1.0.219"
+serde_json = "1.0.140"
+chrono = "0.4.40"
+glob = "0.3.2"
+circular-queue = "0.2.7"
+failure = "0.1.8"
+htmlescape = "0.3.1"
+antidote = "1.0.0"
+log4rs = "1.3.0"
+itertools = "0.8.2"
+unicode_names2 = "1.3.0"
 
 frippy_derive = { path = "frippy_derive" }
-rand = "0.7.3"
-
-[dependencies.unicode_names]
-git = 'https://github.com/Jokler/unicode_names'
-branch = 'update-to-latest-unicode'
+rand = "0.9.0"
 
 [dependencies.diesel]
-version = "2.1.5"
+version = "2.2.9"
 features = ["mysql", "chrono", "r2d2", "time"]
 
 [dependencies.diesel_migrations]
-version = "2.1.0"
+version = "2.2.0"
 features = ["mysql"]
 
 [dependencies.r2d2]

@@ -168,7 +168,8 @@ fn convert_lua_value(
         | LuaValue::Thread(_)
         | LuaValue::Function(_)
         | LuaValue::UserData(_)
-        | LuaValue::LightUserData(_) => SerdeValue::Null,
+        | LuaValue::LightUserData(_)
+        | LuaValue::Other(_) => SerdeValue::Null,
         LuaValue::Error(e) => SerdeValue::String(e.to_string()),
         LuaValue::Boolean(b) => SerdeValue::Bool(b),
         LuaValue::String(s) => SerdeValue::String(s.to_string_lossy().to_string()),

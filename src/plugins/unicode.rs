@@ -24,7 +24,7 @@ impl<C: FrippyClient> Unicode<C> {
     }
 
     fn get_name(&self, symbol: char) -> String {
-        match unicode_names::name(symbol) {
+        match unicode_names2::name(symbol) {
             Some(sym) => sym.to_string().to_lowercase(),
             None => String::from("UNKNOWN"),
         }

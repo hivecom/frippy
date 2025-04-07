@@ -230,7 +230,7 @@ impl<C: Client> Factoid<C> {
                 // Limit the cpu usage of factoids
                 thread::sleep(Duration::from_millis(1));
 
-                Ok(())
+                Ok(LuaVmState::Continue)
             },
         );
 
@@ -263,7 +263,7 @@ impl<C: Client> Factoid<C> {
 
         lua.load(LUA_SANDBOX).set_name(name).exec()?;
 
-        let output = globals.get::<_, Vec<String>>("output")?;
+        let output = globals.get::<Vec<String>>("output")?;
 
         Ok(output.join("|"))
     }
