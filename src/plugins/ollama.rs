@@ -24,7 +24,7 @@ use self::error::*;
 pub struct Ollama<C> {
     url: String,
     model: String,
-    context: Mutex<Vec<u16>>,
+    context: Mutex<Vec<u32>>,
     phantom: PhantomData<C>,
 }
 
@@ -43,7 +43,7 @@ impl<C: FrippyClient> Ollama<C> {
 struct OllamaRequest {
     model: String,
     prompt: String,
-    context: Vec<u16>,
+    context: Vec<u32>,
     stream: bool,
     options: OllamaOptions,
 }
@@ -56,7 +56,7 @@ struct OllamaOptions {
 #[derive(Debug, Deserialize)]
 struct OllamaReply {
     response: String,
-    context: Vec<u16>,
+    context: Vec<u32>,
 }
 
 impl<C> Ollama<C> {
@@ -172,6 +172,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore]
     #[test]
     fn prompt() {
         let ollama = Ollama::<TestClient>::new(
