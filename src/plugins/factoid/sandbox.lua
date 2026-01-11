@@ -35,6 +35,7 @@ local sandbox_env = {
 	json = { decode = json_decode, encode = json_encode },
 	date = { parse = parse_date },
 	timestamp = { format = format_timestamp },
+  url = { encode = url_encode },
 	retrieve = retrieve,
 	persist = persist,
 	args = args,

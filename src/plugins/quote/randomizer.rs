@@ -46,7 +46,7 @@ impl RandomIndex {
 
     fn generate_list(count: i32) -> Vec<i32> {
         let mut numbers: Vec<i32> = (1..=count).collect();
-        numbers.shuffle(&mut rand::thread_rng());
+        numbers.shuffle(&mut rand::rng());
         numbers
     }
 }

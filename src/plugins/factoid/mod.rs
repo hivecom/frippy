@@ -15,9 +15,9 @@ use crate::FrippyClient;
 use crate::{plugin::*, ConnectionPool};
 pub mod database;
 
-mod utils;
+mod functions;
 use self::database::{count_factoids, delete_factoid, get_factoid, get_lua_value, insert_factoid};
-use self::utils::*;
+use self::functions::*;
 use crate::utils::Request;
 
 use self::error::*;
@@ -254,6 +254,7 @@ impl<C: Client> Factoid<C> {
         globals.set("json_encode", lua.create_function(json_encode)?)?;
         globals.set("parse_date", lua.create_function(parse_date)?)?;
         globals.set("format_timestamp", lua.create_function(format_timestamp)?)?;
+        globals.set("url_encode", lua.create_function(url_encode)?)?;
         globals.set("sleep", lua.create_function(sleep)?)?;
         globals.set("args", args)?;
         globals.set("input", command.tokens.join(" "))?;

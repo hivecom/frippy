@@ -10,6 +10,6 @@ appenders:
 
 loggers:
     frippy:
-        level: info
+        level: trace
         appenders:
             - stdout
