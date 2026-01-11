@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
+use percent_encoding::NON_ALPHANUMERIC;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Method;
 use serde_json::{self, Value as SerdeValue};
@@ -214,4 +215,8 @@ pub fn format_timestamp(_: &Lua, (timestamp, format): (i64, String)) -> Result<S
         .map(|d| d.format(&format))
         .map_err(LuaError::external)
         .and_then(|r| r.map_err(LuaError::external))
+}
+
+pub fn url_encode(_: &Lua, input: String) -> Result<String, LuaError> {
+    Ok(percent_encoding::utf8_percent_encode(&input, NON_ALPHANUMERIC).to_string())
 }
