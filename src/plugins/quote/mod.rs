@@ -112,7 +112,22 @@ impl<C: Client> Quote<C> {
         match quotee {
             Some(quotee) => {
                 let idx = match tokens.get(1) {
-                    Some(s) => Some(i32::from_str(s).context(ErrorKind::InvalidIndex)?),
+                    Some(s) => {
+                        let Ok(idx) = i32::from_str(s) else {
+                            return self.search_user(
+                                quotee,
+                                channel,
+                                &tokens[1..]
+                                    .iter()
+                                    .map(|&s| s.to_owned())
+                                    .collect::<Vec<String>>()
+                                    .join(" "),
+                                0,
+                            );
+                        };
+
+                        Some(idx)
+                    }
                     None => None,
                 };
 
