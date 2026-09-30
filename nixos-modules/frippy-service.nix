@@ -6,6 +6,50 @@
 }:
 with lib; let
   cfg = config.services.frippy;
+  format = pkgs.formats.toml {};
+  configFile =
+    if cfg.configFile != null
+    then cfg.configFile
+    else
+      lib.pipe
+      {
+        inherit (cfg) owners;
+        inherit (cfg.user) nickname;
+        nick_password = cfg.user.password;
+        alt_nicks = cfg.user.altNicks;
+        inherit (cfg.user) realname;
+        server = cfg.server.address;
+        inherit (cfg.server) password;
+        inherit (cfg.server) port;
+        use_ssl = cfg.server.ssl;
+        inherit (cfg.server) encoding;
+        inherit (cfg.server) channels;
+        inherit (cfg.user) umodes;
+        user_info = cfg.user.userInfo;
+        inherit (cfg.user) version;
+        inherit (cfg.user) source;
+        # FIXME: merge with channels into a { name, key } list
+        channel_keys = cfg.server.channelKeys;
+
+        options = {
+          inherit (cfg) prefix;
+          disabled_plugins = cfg.disabledPlugins;
+          mysql_url =
+            if cfg.database.password != null
+            then "mysql://${cfg.database.user}:${cfg.database.password}@${cfg.database.host}:${toString cfg.database.port}/${cfg.database.name}"
+            else "mysql://${cfg.database.user}@${cfg.database.host}:${toString cfg.database.port}/${cfg.database.name}";
+
+          bridge_name = cfg.bridge.name;
+          bridge_regex = cfg.bridge.regex;
+          bridge_relay_format = cfg.bridge.relayFormat;
+          bridge_ignore_regex = cfg.bridge.ignoreRegex;
+          bridge_remove_zws = toString cfg.bridge.removeZWS;
+        };
+      }
+      [
+        (lib.filterAttrsRecursive (_k: v: v != null))
+        (format.generate "frippy.toml")
+      ];
 in {
   ###### interface
   options = {
@@ -22,6 +66,14 @@ in {
         default = pkgs.frippy;
         defaultText = "pkgs.frippy";
         description = "Frippy package";
+      };
+      configFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          Config file path for frippy.
+          If this option is defined, the rest of the configuration will be ignored.
+        '';
       };
       owners = mkOption {
         type = types.listOf types.str;
@@ -149,7 +201,7 @@ in {
         };
         channels = mkOption {
           type = types.listOf types.str;
-          default = "";
+          default = [];
           description = ''
             List of channels to connect to automatically.
           '';
@@ -274,47 +326,7 @@ in {
         PrivateTmp = true;
       };
     };
-    # FIXME: provide alternative for secrets
-    environment.etc."frippy/configs/config.toml".source =
-      lib.pipe
-      {
-        inherit (cfg) owners;
-        inherit (cfg.user) nickname;
-        nick_password = cfg.user.password;
-        alt_nicks = cfg.user.altNicks;
-        inherit (cfg.user) realname;
-        server = cfg.server.address;
-        inherit (cfg.server) password;
-        inherit (cfg.server) port;
-        use_ssl = cfg.server.ssl;
-        inherit (cfg.server) encoding;
-        inherit (cfg.server) channels;
-        inherit (cfg.user) umodes;
-        user_info = cfg.user.userInfo;
-        inherit (cfg.user) version;
-        inherit (cfg.user) source;
-        # FIXME: merge with channels into a { name, key } list
-        channel_keys = cfg.server.channelKeys;
-
-        options = {
-          inherit (cfg) prefix;
-          disabled_plugins = cfg.disabledPlugins;
-          mysql_url =
-            if cfg.database.password != null
-            then "mysql://${cfg.database.user}:${cfg.database.password}@${cfg.database.host}:${toString cfg.database.port}/${cfg.database.name}"
-            else "mysql://${cfg.database.user}@${cfg.database.host}:${toString cfg.database.port}/${cfg.database.name}";
-
-          bridge_name = cfg.bridge.name;
-          bridge_regex = cfg.bridge.regex;
-          bridge_relay_format = cfg.bridge.relayFormat;
-          bridge_ignore_regex = cfg.bridge.ignoreRegex;
-          bridge_remove_zws = toString cfg.bridge.removeZWS;
-        };
-      }
-      [
-        (lib.filterAttrsRecursive (_k: v: v != null))
-        ((pkgs.formats.toml {}).generate "frippy-config")
-      ];
+    environment.etc."frippy/configs/config.toml".source = configFile;
 
     environment.etc."frippy/log.yml".source = (pkgs.formats.yaml {}).generate "frippy-log-config" {
       appenders.stdout = {
